@@ -415,7 +415,7 @@ public class GameCore {
     }
 
     private void aiDoHit(PlayerData p, boolean spike) {
-        double vh = spike ? 5.0 : 4.0;
+        double vh = spike ? (4.0 + rnd.nextDouble() * 3.0) : (3.0 + rnd.nextDouble() * 2.5);
         PlayerData[] opps = (p.team == 0) ? enemyTeam : myTeam;
         double y0 = (p.team == 0) ? 9 : 0, y1 = (p.team == 0) ? 18 : 9;
         // ✅ 更精细的9×5网格搜索空档
