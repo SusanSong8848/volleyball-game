@@ -410,7 +410,7 @@ public class GameCore {
         if (spike) vh *= 1.5; // 扣球水平速度x1.5，确保球能打过网
         ballVx = p.facingX * vh;
         ballVy = p.facingY * vh;
-        ballVz = spike ? -1.0 : 5.0;
+        ballVz = spike ? -0.4 : 5.0;
         lastTouchedByTeam = p.team;
     }
 

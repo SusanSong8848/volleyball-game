@@ -289,7 +289,7 @@ mvn javafx:run
 | 击球类型 | 触发方式 | 水平速度 V | 竖直速度 Vz | 击球方向 |
 |----------|----------|-----------|------------|----------|
 | **传球** | 鼠标左键 | 默认 4 m/s（可用 0~9 调整） | **+5 m/s** 斜向上 | 球员正面方向 |
-| **扣球** | 鼠标右键 | 默认 4 m/s（可用 0~9 调整） | **-1 m/s** 斜向下 | 球员正面方向 |
+| **扣球** | 鼠标右键 | 默认 4 m/s（可用 0~9 调整） | **-0.4 m/s** 斜向下 | 球员正面方向 |
 
 > 玩家可通过数字键 `0` ~ `9` 实时调整 V 值，传球与扣球共用该设定。
 
@@ -479,7 +479,7 @@ Main.java (启动入口)
 | 球员跳跃高度 | `PlayerData.java` | ~0.8 m | `JUMP_VZ=√8≈2.83` |
 | 击球检测半径 | `PlayerData.java` | 0.9 m | `HIT_RADIUS` |
 | 传球默认 Vz | `GameCore.java` | +5 m/s | 竖直向上 |
-| 扣球默认 Vz | `GameCore.java` | -1 m/s | 竖直向下 |
+| 扣球默认 Vz | `GameCore.java` | -0.4 m/s | 竖直向下 |
 | 得分暂停时间 | `GameCore.java` | 2.0 s | `SCORE_PAUSE` |
 | 挥臂持续时间 | `PlayerData.java` | 0.3 s | `SWING_DURATION` |
 | 转身角速度 | `PlayerData.java` | 12 rad/s | `smoothBodyAngle` |
