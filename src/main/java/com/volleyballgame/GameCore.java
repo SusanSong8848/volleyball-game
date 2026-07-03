@@ -70,10 +70,15 @@ public class GameCore {
     /** 气泡坐标 */
     public double cheerX = 0, cheerY = 0;
     
-    private static final String[] CHEER_TEXTS = {
-        "%s加油！", "%s再加把劲！", "%s我们喜欢你！",
-        "%s勇敢飞，我们永相随！", "%s冲啊！", "%s好球！",
-        "%s你是最棒的！", "%s必胜！", "%s无敌！"
+    private static final String[] CHEER_WIN_TEXTS = {
+        "%s太厉害了！", "%s勇敢飞，我们永相随！", "%s你是最棒的！",
+        "%s打败对面啊！", "%s不愧是排球之神！", "%s好球！",
+        "%s无敌！", "%s冲啊！", "%s必胜！"
+    };
+    private static final String[] CHEER_LOSE_TEXTS = {
+        "%s再加把劲！", "%s你一定可以，相信自己！", "%s别放弃啊！",
+        "%s别打假球啊！", "%s加油！", "%s不要气馁！",
+        "%s下次一定行！", "%s稳住心态！", "%s我们喜欢你！"
     };
 
     // 等距投影参数(与GameRenderer一致)
@@ -467,10 +472,11 @@ public class GameCore {
         refArmTimer = 1.5;
         // 吹哨
         playWhistle();
-        // 加油气泡
+        // 加油气泡（我方得分用鼓励语，敌方得分用安慰语）
         cheerTimer = 2.0;
-        int idx = rnd.nextInt(CHEER_TEXTS.length);
-        currentCheer = String.format(CHEER_TEXTS[idx], playerName);
+        String[] texts = (scorer == 0) ? CHEER_WIN_TEXTS : CHEER_LOSE_TEXTS;
+        int idx = rnd.nextInt(texts.length);
+        currentCheer = String.format(texts[idx], playerName);
         // 气泡出现在观众席区域（场外），不在场内
         int side = rnd.nextInt(4);
         if (side == 0) { // 上侧观众席

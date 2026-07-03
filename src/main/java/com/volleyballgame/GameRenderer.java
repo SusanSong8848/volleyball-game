@@ -265,10 +265,14 @@ public class GameRenderer {
     private void drawBall(GameCore core) {
         double[] pos = p(core.ballX, core.ballY, core.ballZ);
         double sx = pos[0], sy = pos[1], r = 8.0, h = core.ballZ;
+        // 球阴影：近大远小，但再高都有最小影子点
         double[] gp = p(core.ballX, core.ballY, 0.02);
-        double ss = 1.0 / (1.0 + h * 0.6), sa = 0.15 + 0.3 * ss;
-        g.setFill(Color.rgb(0, 0, 0, sa));
-        g.fillOval(gp[0] - Math.max(5, 16 * ss) / 2, gp[1] - Math.max(3, 7 * ss) / 2, Math.max(5, 16 * ss), Math.max(3, 7 * ss));
+        double ss = 1.0 / (1.0 + h * 0.6);
+        double shadowW = Math.max(6, 18 * ss);
+        double shadowH = Math.max(3, 7 * ss);
+        double shadowAlpha = Math.max(0.10, 0.15 + 0.25 * ss);
+        g.setFill(Color.rgb(0, 0, 0, shadowAlpha));
+        g.fillOval(gp[0] - shadowW / 2, gp[1] - shadowH / 2, shadowW, shadowH);
         if (h < 1.0) { g.setFill(Color.rgb(0, 0, 0, 0.25 * (1 - h))); g.fillOval(gp[0] - 5 * (1.5 - h * 0.5), gp[1] - 3, 10 * (1.5 - h * 0.5), 4); }
         if (h > 0.5) { g.setFill(Color.rgb(255, 255, 255, 0.5)); g.setFont(javafx.scene.text.Font.font("Arial", 9)); g.fillText(String.format("%.1fm", h), sx + r + 2, sy - 2); }
 
