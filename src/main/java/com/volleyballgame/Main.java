@@ -186,7 +186,7 @@ public class Main extends Application {
         speedText.setFont(Font.font("Arial", FontWeight.BOLD, 13));
         speedText.setStyle("-fx-fill: yellow;"); // 黄色
         speedText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-        speedText.setX(0); speedText.setWrappingWidth(W); scoreText.setY(PC(3));
+        speedText.setX(0); speedText.setWrappingWidth(W); speedText.setY(PC(3));
 
         stateText = new Text("按空格键开始游戏");
         stateText.setFont(Font.font("Arial", FontWeight.BOLD, 13));

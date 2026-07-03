@@ -6,7 +6,7 @@ package com.volleyballgame;
  * 核心职责：
  *   1. 存储球员逻辑坐标(x,y,z)和朝向(facingX, facingY)
  *   2. 身体平滑旋转(12 rad/s)从当前角度插值到目标角度
- *   3. 跳跃物理(PLAYER_GRAVITY=8m/s², JUMP_HEIGHT=1.2m, vz0≈4.38m/s)
+ *   3. 跳跃物理(PLAYER_GRAVITY=8m/s², JUMP_HEIGHT=2.6m, vz0≈4.38m/s)
  *   4. 挥臂动画(传/扣两种，持续0.3秒)
  *   5. 击球条件检测(3D距离+120°前方扇形角)
  *   6. AI犯错冷却(aiBlunderCooldown, 0.5秒内不再尝试击球)
@@ -79,7 +79,7 @@ public class PlayerData {
 
     // ==================== 跳跃参数 ====================
     /** 跳跃最高高度(m) */
-    static final double JUMP_HEIGHT = 1.2;
+    static final double JUMP_HEIGHT = 2.6;
     /** 跳跃初速度(m/s)，由公式 vz0=√(2gh)=√(2×8×1.2)≈4.38 计算 */
     public static final double JUMP_VZ = Math.sqrt(2 * PLAYER_GRAVITY * JUMP_HEIGHT);
 
