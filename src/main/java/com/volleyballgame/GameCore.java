@@ -109,7 +109,7 @@ public class GameCore {
         allPlayers[0]=myTeam[0]; allPlayers[1]=myTeam[1]; allPlayers[2]=myTeam[2];
         allPlayers[3]=enemyTeam[0]; allPlayers[4]=enemyTeam[1]; allPlayers[5]=enemyTeam[2];
         pickRandomPlayer(); resetBall(); state = State.WAITING;
-        speedV = 7.0;
+        speedV = 4.0;
     }
 
     private void pickRandomPlayer() {
@@ -229,7 +229,7 @@ public class GameCore {
         resetBall();
         ballLanded = false;
         scoreTimer = 0;
-        speedV = 7.0;
+        speedV = 4.0;
         pickRandomPlayer();
         servePending = true;
         netHitTimer = 0;

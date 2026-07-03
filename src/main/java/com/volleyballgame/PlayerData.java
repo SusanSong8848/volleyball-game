@@ -23,7 +23,7 @@ public class PlayerData {
     public static final double MOVE_SPEED = 5.0;
     static final double HIT_CENTER_H = 1.0;
     static final double HIT_RADIUS = 0.9;
-    public static final double PLAYER_GRAVITY = 5.0;
+    public static final double PLAYER_GRAVITY = 8.0;
     public static final double BALL_GRAVITY = 4.0;
 
     // 跳跃参数: 最高1.2m, g_player=5.0, vz0=sqrt(2*5*1.2)=√12≈3.464
