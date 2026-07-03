@@ -265,15 +265,15 @@ public class GameRenderer {
     private void drawBall(GameCore core) {
         double[] pos = p(core.ballX, core.ballY, core.ballZ);
         double sx = pos[0], sy = pos[1], r = 8.0, h = core.ballZ;
-        // 球阴影：近大远小，但再高都有最小影子点
+        // 球阴影：球的正下方(z=0.02)，近大远小，h=0时影子直径=球直径(16px)
         double[] gp = p(core.ballX, core.ballY, 0.02);
-        double ss = 1.0 / (1.0 + h * 0.6);
-        double shadowW = Math.max(6, 18 * ss);
-        double shadowH = Math.max(3, 7 * ss);
-        double shadowAlpha = Math.max(0.10, 0.15 + 0.25 * ss);
+        double ss = 1.0 / (1.0 + h * 0.5);
+        double shadowR = Math.max(4, r * ss);  // h=0时8px，直径16px=球直径；高空中最小4px
+        double shadowAlpha = Math.max(0.08, 0.40 * ss);
         g.setFill(Color.rgb(0, 0, 0, shadowAlpha));
-        g.fillOval(gp[0] - shadowW / 2, gp[1] - shadowH / 2, shadowW, shadowH);
-        if (h < 1.0) { g.setFill(Color.rgb(0, 0, 0, 0.25 * (1 - h))); g.fillOval(gp[0] - 5 * (1.5 - h * 0.5), gp[1] - 3, 10 * (1.5 - h * 0.5), 4); }
+        g.fillOval(gp[0] - shadowR, gp[1] - shadowR * 0.55, shadowR * 2, shadowR * 1.1);
+        // 接近地面时额外加深
+        if (h < 0.5) { g.setFill(Color.rgb(0, 0, 0, 0.25 * (0.5 - h) / 0.5)); g.fillOval(gp[0] - shadowR * 0.9, gp[1] - shadowR * 0.45, shadowR * 1.8, shadowR * 0.9); }
         if (h > 0.5) { g.setFill(Color.rgb(255, 255, 255, 0.5)); g.setFont(javafx.scene.text.Font.font("Arial", 9)); g.fillText(String.format("%.1fm", h), sx + r + 2, sy - 2); }
 
         g.setFill(Color.rgb(248, 248, 248)); g.fillOval(sx - r, sy - r, r * 2, r * 2);

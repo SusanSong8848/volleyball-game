@@ -352,7 +352,8 @@ public class GameCore {
 
     private void checkHumanHit() {
         if (!ballInPlay) return;
-        if (controlledPlayer.canHit(ballX, ballY, ballZ)) {
+        // 玩家击球范围比AI大一点(1.05m vs 0.9m)
+        if (controlledPlayer.canHit(ballX, ballY, ballZ, 1.05)) {
             if (controlledPlayer.swingType != 0 && controlledPlayer.swingTimer < 0.22 && controlledPlayer.swingTimer > 0.03) {
                 hitBall(controlledPlayer, controlledPlayer.swingType == 2);
                 controlledPlayer.swingTimer = 0.02;
