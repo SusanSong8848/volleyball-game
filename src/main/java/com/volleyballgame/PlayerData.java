@@ -46,10 +46,15 @@ public class PlayerData {
 
     /** 击球检测: 球在身体前方120°扇形范围内且距离≤0.9m */
     public boolean canHit(double bx, double by, double bz) {
+        return canHit(bx, by, bz, HIT_RADIUS);
+    }
+
+    /** 击球检测(自定义半径): 玩家可用更大半径 */
+    public boolean canHit(double bx, double by, double bz, double radius) {
         double cx = x, cy = y, cz = z + HIT_CENTER_H;
         double dx = bx - cx, dy = by - cy, dz = bz - cz;
         double dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        if (dist > HIT_RADIUS) return false;
+        if (dist > radius) return false;
         double hLen = Math.sqrt(dx*dx + dy*dy);
         if (hLen < 0.001) return true;
         double dp = facingX * (dx / hLen) + facingY * (dy / hLen);
