@@ -26,8 +26,8 @@ public class PlayerData {
     public static final double PLAYER_GRAVITY = 5.0;
     public static final double BALL_GRAVITY = 4.0;
 
-    // 跳跃参数: 最高0.8m, g_player=5.0, vz0=sqrt(2*5*0.8)=√8≈2.828
-    static final double JUMP_HEIGHT = 0.8;
+    // 跳跃参数: 最高1.2m, g_player=5.0, vz0=sqrt(2*5*1.2)=√12≈3.464
+    static final double JUMP_HEIGHT = 1.2;
     public static final double JUMP_VZ = Math.sqrt(2 * PLAYER_GRAVITY * JUMP_HEIGHT);
 
     public double defX, defY;

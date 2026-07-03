@@ -109,7 +109,7 @@ public class GameCore {
         allPlayers[0]=myTeam[0]; allPlayers[1]=myTeam[1]; allPlayers[2]=myTeam[2];
         allPlayers[3]=enemyTeam[0]; allPlayers[4]=enemyTeam[1]; allPlayers[5]=enemyTeam[2];
         pickRandomPlayer(); resetBall(); state = State.WAITING;
-        speedV = 4.0;
+        speedV = 7.0;
     }
 
     private void pickRandomPlayer() {
@@ -229,7 +229,7 @@ public class GameCore {
         resetBall();
         ballLanded = false;
         scoreTimer = 0;
-        speedV = 4.0;
+        speedV = 7.0;
         pickRandomPlayer();
         servePending = true;
         netHitTimer = 0;
@@ -352,9 +352,9 @@ public class GameCore {
 
     private void checkHumanHit() {
         if (!ballInPlay) return;
-        // 玩家击球范围比AI大一点(1.05m vs 0.9m)，扣球范围更大(1.2m)
+        // 玩家击球范围比AI大一点(1.05m vs 0.9m)，扣球范围更大(1.35m)
         boolean spiking = (controlledPlayer.swingType == 2);
-        double humanRadius = spiking ? 1.2 : 1.05;
+        double humanRadius = spiking ? 1.35 : 1.05;
         if (controlledPlayer.canHit(ballX, ballY, ballZ, humanRadius)) {
             if (controlledPlayer.swingType != 0 && controlledPlayer.swingTimer < 0.22 && controlledPlayer.swingTimer > 0.03) {
                 hitBall(controlledPlayer, controlledPlayer.swingType == 2);
