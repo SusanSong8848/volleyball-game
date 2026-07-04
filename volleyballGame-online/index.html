@@ -742,6 +742,7 @@ class GameCore {
 
   /* doAI - ★ 修复：阈值完全对齐 Java（拦截点切直接追踪=1.2m，放弃追踪=0.2m，挥臂下限=0.3m） */
   doAI(p,dt,receiver){
+    p.aiReceiver=receiver;
     if(this.ballZ<=0.2||!this.ballInPlay){
       if(GameCore.dist(p.x,p.y,p.defX,p.defY)>0.3){
         this.moveToward(p,p.defX,p.defY,dt);
@@ -779,6 +780,16 @@ class GameCore {
 
     this.updateAIFacing(p,targetX,targetY);
     p.runTimer+=dt;p.isMoving=true;
+
+    // 预摆臂：接球者已经进入近距离接球区时，提前进入挥臂窗口，避免站到球边却一直不出手
+    if(receiver&&p.swingType===0&&this.ballZ>0.3&&this.ballZ<3.5){
+      let dx=this.ballX-p.x,dy=this.ballY-p.y,dz=this.ballZ-(p.z+PlayerData.HIT_CENTER_H);
+      let horiz=Math.sqrt(dx*dx+dy*dy);
+      if(horiz<=1.15&&Math.abs(dz)<=1.25){
+        let spike=this.ballZ>1.8&&Math.abs(p.y-NET_Y)<1.8;
+        p.startSwing(spike);
+      }
+    }
 
     if(this.ballZ>0.3&&this.ballZ<3.5&&p.canHit(this.ballX,this.ballY,this.ballZ)){
       if(p.swingType===0){
