@@ -692,10 +692,13 @@ class GameCore {
   /* assignReceivers - 精确对应 Java GameCore.assignReceivers() */
   assignReceivers(){
     if(!this.ballInPlay){this.myAssigned=-1;this.enemyAssigned=-1;return;}
+    // 先按 1.0m 拦截点分配接球者；若当前轨迹已经太低，再退回到落点预测
+    let intercept=this.predictAtHeight(1.0);
     let land=this.predictLand();
-    if(land===null){this.myAssigned=-1;this.enemyAssigned=-1;return;}
-    this.myAssigned=this.bestRecv(this.myTeam,land);
-    this.enemyAssigned=this.bestRecv(this.enemyTeam,land);
+    let target=intercept||land;
+    if(target===null){this.myAssigned=-1;this.enemyAssigned=-1;return;}
+    this.myAssigned=this.bestRecv(this.myTeam,target);
+    this.enemyAssigned=this.bestRecv(this.enemyTeam,target);
   }
 
   /* predictAtHeight - 精确对应 Java GameCore.predictAtHeight() */
@@ -752,7 +755,7 @@ class GameCore {
     let targetX=p.defX,targetY=p.defY;
     let hasValidTarget=false;
 
-    if(this.ballZ>1.2&&intercept!==null){
+    if(intercept!==null&&this.ballZ>0.2){
       targetX=intercept[0];targetY=intercept[1];hasValidTarget=true;
     }else if(this.ballZ<=1.2&&this.ballZ>0.2){
       targetX=this.ballX;targetY=this.ballY;hasValidTarget=true;
