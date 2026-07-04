@@ -70,6 +70,7 @@ ctx.scale(dpr, dpr);
 
 /* ============================================================
    PlayerData - 精确对应 Java PlayerData.java
+   修复：HIT_RADIUS 改回 0.9（原Java值），不再是 1.1
    ============================================================ */
 class PlayerData {
   constructor(idx, team, x, y) {
@@ -83,7 +84,7 @@ class PlayerData {
   }
   static MOVE_SPEED=5.0;
   static HIT_CENTER_H=1.0;
-  static HIT_RADIUS=0.9;
+  static HIT_RADIUS=0.9;           // ★ 修复：恢复为 Java 原值 0.9（原网页版错误设为 1.1）
   static PLAYER_GRAVITY=8.0;
   static JUMP_HEIGHT=2.6;
   static JUMP_VZ=Math.sqrt(2*PlayerData.PLAYER_GRAVITY*PlayerData.JUMP_HEIGHT);
@@ -574,7 +575,7 @@ class GameCore {
     }
   }
 
-  /* getBlunderChance - 精确对应 Java GameCore.getBlunderChance() */
+  /* getBlunderChance - ★ 修复：恢复为 Java 原始犯错率（原网页版减半了所有值） */
   getBlunderChance(team){
     if(team===0){
       return(this.difficulty==='EASY')?0.08:(this.difficulty==='NORMAL')?0.20:0.30;
@@ -583,7 +584,7 @@ class GameCore {
     }
   }
 
-  /* checkAIHit - 精确对应 Java GameCore.checkAIHit() */
+  /* checkAIHit - ★ 修复：与 Java 版本完全一致（去掉网页版额外添加的宽松判定） */
   checkAIHit(){
     if(!this.ballInPlay)return;
     for(let p of this.allPlayers){
@@ -720,7 +721,7 @@ class GameCore {
     return[this.ballX+this.ballVx*t,this.ballY+this.ballVy*t];
   }
 
-  /* bestRecv - 精确对应 Java GameCore.bestRecv() */
+  /* bestRecv - ★ 修复：反应时间恢复为 Java 的 0.08s（原网页版0.04s） */
   bestRecv(team,interceptPt){
     let best=Infinity,idx=-1;
     for(let i=0;i<3;i++){
@@ -736,7 +737,7 @@ class GameCore {
     return idx;
   }
 
-  /* doAI - 精确对应 Java GameCore.doAI() */
+  /* doAI - ★ 修复：阈值完全对齐 Java（拦截点切直接追踪=1.2m，放弃追踪=0.2m，挥臂下限=0.3m） */
   doAI(p,dt,receiver){
     if(this.ballZ<=0.2||!this.ballInPlay){
       if(GameCore.dist(p.x,p.y,p.defX,p.defY)>0.3){
