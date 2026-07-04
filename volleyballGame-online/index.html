@@ -8,7 +8,7 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#1a1a2e; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden; font-family:'Microsoft YaHei','Arial',sans-serif; user-select:none; }
 #container { position:relative; width:1280px; height:720px; }
-canvas { display:block; }
+canvas { display:block; width:1280px; height:720px; image-rendering:auto; }
 #ui-layer { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
 #login-screen, #mode-screen { position:absolute; top:0; left:0; width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:10; }
 #login-screen { background:#1a1a2e; }
@@ -32,7 +32,7 @@ canvas { display:block; }
 </head>
 <body>
 <div id="container">
-  <canvas id="gameCanvas" width="1280" height="720"></canvas>
+  <canvas id="gameCanvas"></canvas>
   <div id="ui-layer">
     <div class="ui-text" id="ui-mode" style="top:28px; color:#FFD700; font-size:13px;">选手: 玩家</div>
     <div class="ui-text" id="ui-player" style="top:46px; color:cyan; font-size:13px;">控制: -</div>
@@ -66,251 +66,193 @@ canvas { display:block; }
 
 <script>
 // ============================================================
+// 高DPI适配：Canvas内部分辨率 = 1280*dpr × 720*dpr，CSS保持1280×720
+// 这样在2x屏幕上实际是2560×1440渲染，画质非常清晰
+// ============================================================
+const W=1280, H=720;
+const canvas=document.getElementById('gameCanvas');
+const dpr=Math.min(window.devicePixelRatio||1, 2); // 最多2x，防止性能问题
+canvas.width=W*dpr; canvas.height=H*dpr;
+const ctx=canvas.getContext('2d');
+ctx.scale(dpr, dpr);
+
+// ============================================================
 // PlayerData - 球员数据结构
 // ============================================================
 class PlayerData {
   constructor(idx, team, x, y) {
-    this.index = idx; this.team = team; this.isHumanControlled = false;
-    this.x = this.defX = x; this.y = this.defY = y; this.z = 0; this.vz = 0;
-    this.facingX = 0; this.facingY = (team === 0) ? 1 : -1;
-    this.bodyAngle = Math.atan2(this.facingX, this.facingY);
-    this.targetBodyAngle = this.bodyAngle;
-    this.prevBodyAngle = this.bodyAngle;
-    this.swingType = 0; this.swingTimer = 0;
-    this.runTimer = 0; this.isMoving = false;
-    this.aiBlunderCooldown = 0;
+    this.index=idx; this.team=team; this.isHumanControlled=false;
+    this.x=this.defX=x; this.y=this.defY=y; this.z=0; this.vz=0;
+    this.facingX=0; this.facingY=(team===0)?1:-1;
+    this.bodyAngle=Math.atan2(this.facingX,this.facingY);
+    this.targetBodyAngle=this.bodyAngle; this.prevBodyAngle=this.bodyAngle;
+    this.swingType=0; this.swingTimer=0; this.runTimer=0; this.isMoving=false; this.aiBlunderCooldown=0;
   }
-  static MOVE_SPEED = 5.0;
-  static HIT_CENTER_H = 1.0;
-  static HIT_RADIUS = 0.9;
-  static PLAYER_GRAVITY = 8.0;
-  static JUMP_HEIGHT = 2.6;
-  static JUMP_VZ = Math.sqrt(2 * PlayerData.PLAYER_GRAVITY * PlayerData.JUMP_HEIGHT);
-  static SWING_DURATION = 0.3;
-
-  canHit(bx, by, bz, radius = PlayerData.HIT_RADIUS) {
-    let cx = this.x, cy = this.y, cz = this.z + PlayerData.HIT_CENTER_H;
-    let dx = bx - cx, dy = by - cy, dz = bz - cz;
-    let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-    if (dist > radius) return false;
-    let hLen = Math.sqrt(dx*dx + dy*dy);
-    if (hLen < 0.001) return true;
-    let dp = this.facingX * (dx / hLen) + this.facingY * (dy / hLen);
-    return dp >= -0.866 && dp <= 0.866;
+  static MOVE_SPEED=5.0;
+  static HIT_CENTER_H=1.0;
+  static HIT_RADIUS=0.9;
+  static PLAYER_GRAVITY=8.0;
+  static JUMP_HEIGHT=2.6;
+  static JUMP_VZ=Math.sqrt(2*PlayerData.PLAYER_GRAVITY*PlayerData.JUMP_HEIGHT);
+  static SWING_DURATION=0.3;
+  canHit(bx,by,bz,radius=PlayerData.HIT_RADIUS){
+    let cx=this.x,cy=this.y,cz=this.z+PlayerData.HIT_CENTER_H,dx=bx-cx,dy=by-cy,dz=bz-cz;
+    let dist=Math.sqrt(dx*dx+dy*dy+dz*dz); if(dist>radius)return false;
+    let hLen=Math.sqrt(dx*dx+dy*dy); if(hLen<0.001)return true;
+    let dp=this.facingX*(dx/hLen)+this.facingY*(dy/hLen);
+    return dp>=-0.866&&dp<=0.866;
   }
-
-  startSwing(spike) { this.swingType = spike ? 2 : 1; this.swingTimer = PlayerData.SWING_DURATION; }
-
-  updatePhysics(dt) {
-    if (this.z > 0 || this.vz > 0) { this.vz -= PlayerData.PLAYER_GRAVITY * dt; this.z += this.vz * dt; if (this.z <= 0) { this.z = 0; this.vz = 0; } }
-    this.updateSwing(dt);
-    this.smoothBodyAngle(dt);
-    if (Math.abs(this.vz) > 0.1 || this.z > 0.01) this.runTimer = 0;
+  startSwing(spike){this.swingType=spike?2:1;this.swingTimer=PlayerData.SWING_DURATION;}
+  updatePhysics(dt){
+    if(this.z>0||this.vz>0){this.vz-=PlayerData.PLAYER_GRAVITY*dt;this.z+=this.vz*dt;if(this.z<=0){this.z=0;this.vz=0;}}
+    this.updateSwing(dt); this.smoothBodyAngle(dt);
+    if(Math.abs(this.vz)>0.1||this.z>0.01)this.runTimer=0;
   }
-
-  updateSwing(dt) {
-    if (this.swingTimer > 0) { this.swingTimer -= dt; if (this.swingTimer <= 0) { this.swingType = 0; this.swingTimer = 0; } }
-    if (this.aiBlunderCooldown > 0) { this.aiBlunderCooldown -= dt; if (this.aiBlunderCooldown < 0) this.aiBlunderCooldown = 0; }
+  updateSwing(dt){
+    if(this.swingTimer>0){this.swingTimer-=dt;if(this.swingTimer<=0){this.swingType=0;this.swingTimer=0;}}
+    if(this.aiBlunderCooldown>0){this.aiBlunderCooldown-=dt;if(this.aiBlunderCooldown<0)this.aiBlunderCooldown=0;}
   }
-
-  updateFacing(fx, fy) { this.facingX = fx; this.facingY = fy; this.targetBodyAngle = Math.atan2(fx, fy); }
-
-  smoothBodyAngle(dt) {
-    this.prevBodyAngle = this.bodyAngle;
-    let diff = this.targetBodyAngle - this.bodyAngle;
-    while (diff > Math.PI) diff -= 2*Math.PI;
-    while (diff < -Math.PI) diff += 2*Math.PI;
-    let step = dt * 12.0;
-    if (Math.abs(diff) <= step) { this.bodyAngle = this.targetBodyAngle; }
-    else { this.bodyAngle += Math.sign(diff) * step; }
-    while (this.bodyAngle > Math.PI) this.bodyAngle -= 2*Math.PI;
-    while (this.bodyAngle < -Math.PI) this.bodyAngle += 2*Math.PI;
+  updateFacing(fx,fy){this.facingX=fx;this.facingY=fy;this.targetBodyAngle=Math.atan2(fx,fy);}
+  smoothBodyAngle(dt){
+    this.prevBodyAngle=this.bodyAngle;
+    let diff=this.targetBodyAngle-this.bodyAngle;
+    while(diff>Math.PI)diff-=2*Math.PI; while(diff<-Math.PI)diff+=2*Math.PI;
+    let step=dt*12.0;
+    if(Math.abs(diff)<=step)this.bodyAngle=this.targetBodyAngle;
+    else this.bodyAngle+=Math.sign(diff)*step;
+    while(this.bodyAngle>Math.PI)this.bodyAngle-=2*Math.PI;
+    while(this.bodyAngle<-Math.PI)this.bodyAngle+=2*Math.PI;
   }
-
-  resetToDefault() {
-    this.x = this.defX; this.y = this.defY; this.z = 0; this.vz = 0;
-    this.runTimer = 0; this.isMoving = false;
-    this.facingX = 0; this.facingY = (this.team === 0) ? 1 : -1;
-    this.bodyAngle = Math.atan2(this.facingX, this.facingY);
-    this.targetBodyAngle = this.bodyAngle; this.prevBodyAngle = this.bodyAngle;
-    this.swingType = 0; this.swingTimer = 0; this.aiBlunderCooldown = 0;
+  resetToDefault(){
+    this.x=this.defX;this.y=this.defY;this.z=0;this.vz=0;this.runTimer=0;this.isMoving=false;
+    this.facingX=0;this.facingY=(this.team===0)?1:-1;
+    this.bodyAngle=Math.atan2(this.facingX,this.facingY);
+    this.targetBodyAngle=this.bodyAngle;this.prevBodyAngle=this.bodyAngle;
+    this.swingType=0;this.swingTimer=0;this.aiBlunderCooldown=0;
   }
-
-  jump() { if (this.z <= 0.01) this.vz = PlayerData.JUMP_VZ; }
+  jump(){if(this.z<=0.01)this.vz=PlayerData.JUMP_VZ;}
 }
 
 // ============================================================
-// GameRenderer - 2D等距投影渲染器
+// GameRenderer - 2D等距投影渲染器（高DPI版）
 // ============================================================
 class GameRenderer {
-  constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.spectatorData = null; this.initSpectators(); }
+  constructor(){this.spectatorData=null;this.initSpectators();}
+  static SCALE=36.0; static COS30=0.8660254; static SIN30=0.5; static OX=200; static OY=530;
+  static SPECTATOR_COLORS=['#dc3c3c','#3c8c3c','#3c3cc8','#dcb428','#dc7828','#a03cc8','#3cb4b4'];
 
-  static SCALE = 36.0; static COS30 = 0.8660254; static SIN30 = 0.5; static OX = 200; static OY = 530;
-  static SPECTATOR_COLORS = ['#dc3c3c','#3c8c3c','#3c3cc8','#dcb428','#dc7828','#a03cc8','#3cb4b4'];
+  static p(x,y,z){return[GameRenderer.OX+(x+y)*GameRenderer.COS30*GameRenderer.SCALE,GameRenderer.OY+(x-y)*GameRenderer.SIN30*GameRenderer.SCALE-z*GameRenderer.SCALE];}
+  pw(pl,lx,ly,z){return GameRenderer.p(pl.x+lx*pl.facingY+ly*pl.facingX,pl.y-lx*pl.facingX+ly*pl.facingY,z);}
+  fillPoly(pts){ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();ctx.fill();}
+  strokePoly(pts,closed){ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);if(closed)ctx.closePath();ctx.stroke();}
+  fillRect(x0,y0,x1,y1,color){ctx.fillStyle=color;this.fillPoly([GameRenderer.p(x0,y0,0),GameRenderer.p(x1,y0,0),GameRenderer.p(x1,y1,0),GameRenderer.p(x0,y1,0)]);}
 
-  static p(x, y, z) { return [GameRenderer.OX + (x+y)*GameRenderer.COS30*GameRenderer.SCALE, GameRenderer.OY + (x-y)*GameRenderer.SIN30*GameRenderer.SCALE - z*GameRenderer.SCALE]; }
-
-  pw(pl, lx, ly, z) { return GameRenderer.p(pl.x + lx*pl.facingY + ly*pl.facingX, pl.y - lx*pl.facingX + ly*pl.facingY, z); }
-
-  fillPoly(pts) { let ctx=this.ctx; ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]); ctx.closePath(); ctx.fill(); }
-  strokePoly(pts,closed) { let ctx=this.ctx; ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]); if(closed)ctx.closePath(); ctx.stroke(); }
-  fillRect(x0,y0,x1,y1,color) { this.ctx.fillStyle=color; this.fillPoly([GameRenderer.p(x0,y0,0),GameRenderer.p(x1,y0,0),GameRenderer.p(x1,y1,0),GameRenderer.p(x0,y1,0)]); }
-
-  // ---- 场地 ----
-  drawCourt() {
-    let ctx=this.ctx, p=GameRenderer.p;
-    let grass=[p(-3,-2,-0.01),p(12,-2,-0.01),p(12,20,-0.01),p(-3,20,-0.01)];
-    ctx.fillStyle='#23592d'; this.fillPoly(grass);
+  drawCourt(){
+    let p=GameRenderer.p;
+    ctx.fillStyle='#23592d'; this.fillPoly([p(-3,-2,-0.01),p(12,-2,-0.01),p(12,20,-0.01),p(-3,20,-0.01)]);
     this.fillRect(0,0,9,9,'#e6af46'); this.fillRect(0,9,9,18,'#d29b32');
-    ctx.strokeStyle='#fff'; ctx.lineWidth=2.5;
+    ctx.strokeStyle='#fff';ctx.lineWidth=2.5;
     this.strokePoly([p(0,0,0),p(9,0,0),p(9,18,0),p(0,18,0)],true);
-    ctx.beginPath(); ctx.moveTo(p(0,9,0.01)[0],p(0,9,0.01)[1]); ctx.lineTo(p(9,9,0.01)[0],p(9,9,0.01)[1]); ctx.stroke();
-    ctx.lineWidth=1.5; ctx.strokeStyle='#ebebeb';
-    ctx.beginPath(); ctx.moveTo(p(0,3,0.01)[0],p(0,3,0.01)[1]); ctx.lineTo(p(9,3,0.01)[0],p(9,3,0.01)[1]); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(p(0,15,0.01)[0],p(0,15,0.01)[1]); ctx.lineTo(p(9,15,0.01)[0],p(9,15,0.01)[1]); ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p(0,9,0.01)[0],p(0,9,0.01)[1]);ctx.lineTo(p(9,9,0.01)[0],p(9,9,0.01)[1]);ctx.stroke();
+    ctx.lineWidth=1.5;ctx.strokeStyle='#ebebeb';
+    ctx.beginPath();ctx.moveTo(p(0,3,0.01)[0],p(0,3,0.01)[1]);ctx.lineTo(p(9,3,0.01)[0],p(9,3,0.01)[1]);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(p(0,15,0.01)[0],p(0,15,0.01)[1]);ctx.lineTo(p(9,15,0.01)[0],p(9,15,0.01)[1]);ctx.stroke();
   }
 
-  // ---- 球网 ----
-  drawNetBack(core) { let p=GameRenderer.p,ctx=this.ctx; let bl=p(0,9,0),br=p(9,9,0),tl=p(0,9,2.43),tr=p(9,9,2.43); ctx.strokeStyle='#5a5a5f';ctx.lineWidth=6; ctx.beginPath();ctx.moveTo(bl[0],bl[1]);ctx.lineTo(tl[0],tl[1]);ctx.stroke(); ctx.beginPath();ctx.moveTo(br[0],br[1]);ctx.lineTo(tr[0],tr[1]);ctx.stroke(); }
+  drawNetBack(core){let p=GameRenderer.p,bl=p(0,9,0),br=p(9,9,0),tl=p(0,9,2.43),tr=p(9,9,2.43);ctx.strokeStyle='#5a5a5f';ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(bl[0],bl[1]);ctx.lineTo(tl[0],tl[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(br[0],br[1]);ctx.lineTo(tr[0],tr[1]);ctx.stroke();}
 
-  drawNetFront(core) {
-    let p=GameRenderer.p,ctx=this.ctx,h=2.43,bl=p(0,9,0),br=p(9,9,0),tl=p(0,9,h),tr=p(9,9,h);
-    let dent=0; if(core.netHitTimer>0)dent=(core.netHitTimer/0.3)*0.5;
+  drawNetFront(core){
+    let p=GameRenderer.p,h=2.43,bl=p(0,9,0),br=p(9,9,0),tl=p(0,9,h),tr=p(9,9,h),dent=0;
+    if(core.netHitTimer>0)dent=(core.netHitTimer/0.3)*0.5;
     ctx.fillStyle='rgba(200,200,230,0.35)';
-    if(dent>0.01){let dx=core.netHitX; this.fillPoly([p(0,9,0),p(dx-0.6,9,0),p(dx,9-dent,2.43*(dent/0.5)),p(dx+0.6,9,0),p(9,9,0),p(9,9,h),p(0,9,h)]);}
+    if(dent>0.01){let dx=core.netHitX;this.fillPoly([p(0,9,0),p(dx-0.6,9,0),p(dx,9-dent,2.43*(dent/0.5)),p(dx+0.6,9,0),p(9,9,0),p(9,9,h),p(0,9,h)]);}
     else this.fillPoly([bl,br,tr,tl]);
-    ctx.strokeStyle='rgba(180,180,190,0.5)';ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(bl[0],bl[1]);ctx.lineTo(br[0],br[1]);ctx.stroke();
-    ctx.strokeStyle='rgba(240,240,245,0.8)';ctx.lineWidth=5; ctx.beginPath();ctx.moveTo(tl[0],tl[1]);ctx.lineTo(tr[0],tr[1]);ctx.stroke();
-    for(let i=1;i<=5;i++){let hh=h*i/6; ctx.strokeStyle='rgba(200,200,220,0.35)';ctx.lineWidth=1; ctx.beginPath();ctx.moveTo(p(0,9,hh)[0],p(0,9,hh)[1]);ctx.lineTo(p(9,9,hh)[0],p(9,9,hh)[1]);ctx.stroke();}
-    ctx.strokeStyle='rgba(200,200,220,0.2)';ctx.lineWidth=0.8; for(let i=1;i<=8;i++){let xx=i;ctx.beginPath();ctx.moveTo(p(xx,9,0.05)[0],p(xx,9,0.05)[1]);ctx.lineTo(p(xx,9,h-0.05)[0],p(xx,9,h-0.05)[1]);ctx.stroke();}
-    let ptl=p(0,9,h+0.1),ptr=p(9,9,h+0.1); ctx.fillStyle='#f0f0f0'; ctx.beginPath();ctx.ellipse(ptl[0],ptl[1],5,5,0,0,Math.PI*2);ctx.fill(); ctx.beginPath();ctx.ellipse(ptr[0],ptr[1],5,5,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#c83c3c';ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(ptl[0],ptl[1]);ctx.lineTo(ptl[0]-12,ptl[1]-30);ctx.stroke(); ctx.beginPath();ctx.moveTo(ptr[0],ptr[1]);ctx.lineTo(ptr[0]+12,ptr[1]-30);ctx.stroke();
+    ctx.strokeStyle='rgba(180,180,190,0.5)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(bl[0],bl[1]);ctx.lineTo(br[0],br[1]);ctx.stroke();
+    ctx.strokeStyle='rgba(240,240,245,0.8)';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(tl[0],tl[1]);ctx.lineTo(tr[0],tr[1]);ctx.stroke();
+    for(let i=1;i<=5;i++){let hh=h*i/6;ctx.strokeStyle='rgba(200,200,220,0.35)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p(0,9,hh)[0],p(0,9,hh)[1]);ctx.lineTo(p(9,9,hh)[0],p(9,9,hh)[1]);ctx.stroke();}
+    ctx.strokeStyle='rgba(200,200,220,0.2)';ctx.lineWidth=0.8;for(let i=1;i<=8;i++){let xx=i;ctx.beginPath();ctx.moveTo(p(xx,9,0.05)[0],p(xx,9,0.05)[1]);ctx.lineTo(p(xx,9,h-0.05)[0],p(xx,9,h-0.05)[1]);ctx.stroke();}
+    let ptl=p(0,9,h+0.1),ptr=p(9,9,h+0.1);ctx.fillStyle='#f0f0f0';ctx.beginPath();ctx.ellipse(ptl[0],ptl[1],5,5,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(ptr[0],ptr[1],5,5,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#c83c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(ptl[0],ptl[1]);ctx.lineTo(ptl[0]-12,ptl[1]-30);ctx.stroke();ctx.beginPath();ctx.moveTo(ptr[0],ptr[1]);ctx.lineTo(ptr[0]+12,ptr[1]-30);ctx.stroke();
   }
 
-  // ---- 球员绘制 ----
-  drawPlayer(pl) {
-    let ctx=this.ctx, p=GameRenderer.p, pw=this.pw.bind(this);
-    let fz=pl.z, ah=fz+0.15, kh=fz+0.55, hh=fz+1.0, ch=fz+1.45, sh=fz+1.8, nh=fz+1.92, hd=fz+2.07;
-    let my=pl.team===0, jersey=my?'#3250dc':'#dc3232', jd=my?'#1e37a0':'#a01e1e', shorts=my?'#142878':'#821414', shoe='#232328', skin='#fad2aa';
-    let s=p(pl.x,pl.y,0.02); ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.beginPath();ctx.ellipse(s[0],s[1],11,6,0,0,Math.PI*2);ctx.fill();
+  drawPlayer(pl){
+    let p=GameRenderer.p,pw=this.pw.bind(this);
+    let fz=pl.z,ah=fz+0.15,kh=fz+0.55,hh=fz+1.0,ch=fz+1.45,sh=fz+1.8,nh=fz+1.92,hd=fz+2.07;
+    let my=pl.team===0,jersey=my?'#3250dc':'#dc3232',jd=my?'#1e37a0':'#a01e1e',shorts=my?'#142878':'#821414',shoe='#232328',skin='#fad2aa';
+    let s=p(pl.x,pl.y,0.02);ctx.fillStyle='rgba(0,0,0,0.3)';ctx.beginPath();ctx.ellipse(s[0],s[1],11,6,0,0,Math.PI*2);ctx.fill();
     let ba=pl.bodyAngle,cosBA=Math.cos(ba),sinBA=Math.sin(ba),ff=Math.max(0,-cosBA),bf=Math.max(0,cosBA),sf=Math.abs(sinBA);
     let rc=pl.runTimer*14.0,loL=0,loR=0;
     if(pl.isMoving&&Math.abs(pl.vz)<0.1&&pl.z<0.01){loL=Math.sin(rc)*0.16;loR=Math.sin(rc+Math.PI)*0.16;}
     let hip=p(pl.x,pl.y,hh),kl=pw(pl,-0.07+loL,0,kh),kr=pw(pl,0.07+loR,0,kh),al=pw(pl,-0.09+loL*2,0,ah),ar=pw(pl,0.09+loR*2,0,ah),sl=pw(pl,-0.11+loL*2,0,fz+0.03),sr=pw(pl,0.11+loR*2,0,fz+0.03);
-    ctx.strokeStyle=shorts;ctx.lineWidth=6; ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(kl[0],kl[1]);ctx.stroke(); ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(kr[0],kr[1]);ctx.stroke();
-    ctx.strokeStyle=skin;ctx.lineWidth=5; ctx.beginPath();ctx.moveTo(kl[0],kl[1]);ctx.lineTo(al[0],al[1]);ctx.stroke(); ctx.beginPath();ctx.moveTo(kr[0],kr[1]);ctx.lineTo(ar[0],ar[1]);ctx.stroke();
-    ctx.strokeStyle=shoe;ctx.lineWidth=7; ctx.beginPath();ctx.moveTo(al[0],al[1]);ctx.lineTo(sl[0],sl[1]);ctx.stroke(); ctx.beginPath();ctx.moveTo(ar[0],ar[1]);ctx.lineTo(sr[0],sr[1]);ctx.stroke();
-    let hl=pw(pl,-0.13,0,hh),hr=pw(pl,0.13,0,hh); ctx.strokeStyle=shorts;ctx.lineWidth=9; ctx.beginPath();ctx.moveTo(hl[0],hl[1]);ctx.lineTo(hr[0],hr[1]);ctx.stroke();
+    ctx.strokeStyle=shorts;ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(kl[0],kl[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(kr[0],kr[1]);ctx.stroke();
+    ctx.strokeStyle=skin;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(kl[0],kl[1]);ctx.lineTo(al[0],al[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(kr[0],kr[1]);ctx.lineTo(ar[0],ar[1]);ctx.stroke();
+    ctx.strokeStyle=shoe;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(al[0],al[1]);ctx.lineTo(sl[0],sl[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(ar[0],ar[1]);ctx.lineTo(sr[0],sr[1]);ctx.stroke();
+    let hl=pw(pl,-0.13,0,hh),hr=pw(pl,0.13,0,hh);ctx.strokeStyle=shorts;ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(hl[0],hl[1]);ctx.lineTo(hr[0],hr[1]);ctx.stroke();
     let td=0.05*(bf-ff),chest=p(pl.x-td*pl.facingX,pl.y-td*pl.facingY,ch),shoulder=p(pl.x-td*pl.facingX,pl.y-td*pl.facingY,sh),bc=(ff>0.4)?jersey:jd;
-    ctx.strokeStyle=bc;ctx.lineWidth=10; ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(chest[0],chest[1]);ctx.stroke();
-    ctx.lineWidth=9; ctx.beginPath();ctx.moveTo(chest[0],chest[1]);ctx.lineTo(shoulder[0],shoulder[1]);ctx.stroke();
+    ctx.strokeStyle=bc;ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(hip[0],hip[1]);ctx.lineTo(chest[0],chest[1]);ctx.stroke();
+    ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(chest[0],chest[1]);ctx.lineTo(shoulder[0],shoulder[1]);ctx.stroke();
     if(ff>0.5){ctx.fillStyle='#fff';ctx.font='10px Arial';ctx.fillText(''+(pl.index%3+1),chest[0]-3,chest[1]+4);}
-    let sw=0.23*(0.7+0.3*(ff+sf)),sL=pw(pl,-sw,0,sh),sR=pw(pl,sw,0,sh); ctx.strokeStyle=bc;ctx.lineWidth=6; ctx.beginPath();ctx.moveTo(sL[0],sL[1]);ctx.lineTo(sR[0],sR[1]);ctx.stroke();
+    let sw=0.23*(0.7+0.3*(ff+sf)),sL=pw(pl,-sw,0,sh),sR=pw(pl,sw,0,sh);ctx.strokeStyle=bc;ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(sL[0],sL[1]);ctx.lineTo(sR[0],sR[1]);ctx.stroke();
     this.drawArms(pl,sh,sL,sR,skin,jersey);
-    let neck=p(pl.x-td*0.5*pl.facingX,pl.y-td*0.5*pl.facingY,nh); ctx.strokeStyle=skin;ctx.lineWidth=3.5; ctx.beginPath();ctx.moveTo(shoulder[0],shoulder[1]);ctx.lineTo(neck[0],neck[1]);ctx.stroke();
-    let head=p(pl.x-td*0.3*pl.facingX,pl.y-td*0.3*pl.facingY,hd); this.drawHead(pl,head,ff,bf,sf,sinBA);
+    let neck=p(pl.x-td*0.5*pl.facingX,pl.y-td*0.5*pl.facingY,nh);ctx.strokeStyle=skin;ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(shoulder[0],shoulder[1]);ctx.lineTo(neck[0],neck[1]);ctx.stroke();
+    let head=p(pl.x-td*0.3*pl.facingX,pl.y-td*0.3*pl.facingY,hd);this.drawHead(pl,head,ff,bf,sf,sinBA);
   }
 
-  // ===== drawHead: 对齐 Java GameRenderer.drawHead，头部半径稍缩以改善比例 =====
-  drawHead(pl, head, ff, bf, sf, sd) {
-    let ctx=this.ctx, skin='#fad2aa', skinS='#dcb491', hair='#2d1c12', hairH='#3e281c';
-    let hx=head[0], hy=head[1], r=8.5;
-    // 肤色底圆
-    ctx.fillStyle=skin; ctx.beginPath();ctx.ellipse(hx,hy+1,r,r-1,0,0,Math.PI*2);ctx.fill();
+  drawHead(pl,head,ff,bf,sf,sd){
+    let skin='#fad2aa',skinS='#dcb491',hair='#2d1c12',hairH='#3e281c',hx=head[0],hy=head[1],r=6.8;
+    ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(hx,hy+1,r,r-1,0,0,Math.PI*2);ctx.fill();
     if(bf>0.2){
-      // ==== 背面 ====
-      ctx.fillStyle=hair; ctx.beginPath();ctx.ellipse(hx,hy,r*1.05,r*1.05,0,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle=hairH; ctx.beginPath();ctx.ellipse(hx,hy-r*0.3,r*1.8,r*1.4,0,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle=skinS; ctx.beginPath();ctx.ellipse(hx,hy+r-2,3,3.5,0,0,Math.PI*2);ctx.fill();
-      if(sf>0.4){ctx.fillStyle=skin; ctx.beginPath();ctx.ellipse(sd>0?hx+r-1:hx-r-3,hy-r+3,3,4.5,0,0,Math.PI*2);ctx.fill();}
+      ctx.fillStyle=hair;ctx.beginPath();ctx.ellipse(hx,hy,r*1.05,r*1.05,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=hairH;ctx.beginPath();ctx.ellipse(hx,hy-r*0.3,r*1.8,r*1.4,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=skinS;ctx.beginPath();ctx.ellipse(hx,hy+r-2,3,3.5,0,0,Math.PI*2);ctx.fill();
+      if(sf>0.4){ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(sd>0?hx+r-1:hx-r-3,hy-r+3,3,4.5,0,0,Math.PI*2);ctx.fill();}
     }else if(ff>0.2){
-      // ==== 正面：完整五官 ====
-      // 头发 - 顶部弧形 (对应 Java fillArc)
-      ctx.fillStyle=hair; ctx.beginPath();ctx.ellipse(hx,hy-r+1,r+1,r*0.8,0,Math.PI,0);ctx.fill();
-      // 两侧头发 (对应 Java fillOval 7×20)
+      ctx.fillStyle=hair;ctx.beginPath();ctx.ellipse(hx,hy-r+1,r+1,r*0.8,0,Math.PI,0);ctx.fill();
       ctx.beginPath();ctx.ellipse(hx-r-1.5,hy,3.5,r,0,0,Math.PI*2);ctx.fill();
       ctx.beginPath();ctx.ellipse(hx+r-3,hy,3.5,r,0,0,Math.PI*2);ctx.fill();
-      // 刘海
       ctx.strokeStyle=hairH;ctx.lineWidth=1;
       for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(hx+i*2,hy-r-1);ctx.lineTo(hx+i*2,hy-r+5);ctx.stroke();}
       let fv=ff;
-      if(fv>0.3){
-        ctx.strokeStyle='rgba(45,28,18,'+(fv*0.9)+')';ctx.lineWidth=2.5;
-        ctx.beginPath();ctx.moveTo(hx-6,hy-2);ctx.lineTo(hx-1,hy-3);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(hx+1,hy-3);ctx.lineTo(hx+6,hy-2);ctx.stroke();
-      }
-      if(fv>0.4){
-        // 双眼白底
-        ctx.fillStyle='#fafafa';
-        ctx.beginPath();ctx.ellipse(hx-2.5,hy-0.5,3.5,2.5,0,0,Math.PI*2);ctx.fill();
-        ctx.beginPath();ctx.ellipse(hx+3.5,hy-0.5,3.5,2.5,0,0,Math.PI*2);ctx.fill();
-        // 瞳孔
-        ctx.fillStyle='#141414';
-        ctx.beginPath();ctx.ellipse(hx-2.5,hy-1,1.8,1.8,0,0,Math.PI*2);ctx.fill();
-        ctx.beginPath();ctx.ellipse(hx+3.5,hy-1,1.8,1.8,0,0,Math.PI*2);ctx.fill();
-        // 高光
-        ctx.fillStyle='#fff';
-        ctx.beginPath();ctx.ellipse(hx-3,hy-1.5,0.8,0.8,0,0,Math.PI*2);ctx.fill();
-        ctx.beginPath();ctx.ellipse(hx+3,hy-1.5,0.8,0.8,0,0,Math.PI*2);ctx.fill();
-      }
-      if(fv>0.5){
-        // 鼻子轮廓
-        ctx.strokeStyle='rgba(210,160,130,'+(fv*0.7)+')';ctx.lineWidth=1.5;
-        ctx.beginPath();ctx.moveTo(hx-0.5,hy+1);ctx.lineTo(hx-1.5,hy+5);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(hx+0.5,hy+1);ctx.lineTo(hx+1.5,hy+5);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(hx-1.5,hy+5);ctx.lineTo(hx+1.5,hy+5);ctx.stroke();
-      }
-      if(fv>0.5){
-        // 嘴巴
-        ctx.strokeStyle='rgba(190,100,85,'+(fv*0.8)+')';ctx.lineWidth=2;
-        ctx.beginPath();ctx.moveTo(hx-3,hy+7);ctx.lineTo(hx+3,hy+7);ctx.stroke();
-      }
-      // 侧面耳朵
-      if(sf>0.15){ctx.fillStyle=skin; ctx.beginPath();ctx.ellipse(sd>0?hx+r-2:hx-r-3,hy-r+4,3,4.5,0,0,Math.PI*2);ctx.fill();}
+      if(fv>0.3){ctx.strokeStyle='rgba(45,28,18,'+(fv*0.9)+')';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(hx-6,hy-2);ctx.lineTo(hx-1,hy-3);ctx.stroke();ctx.beginPath();ctx.moveTo(hx+1,hy-3);ctx.lineTo(hx+6,hy-2);ctx.stroke();}
+      if(fv>0.4){ctx.fillStyle='#fafafa';ctx.beginPath();ctx.ellipse(hx-2.5,hy-0.5,3.5,2.5,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(hx+3.5,hy-0.5,3.5,2.5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#141414';ctx.beginPath();ctx.ellipse(hx-2.5,hy-1,1.8,1.8,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(hx+3.5,hy-1,1.8,1.8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(hx-3,hy-1.5,0.8,0.8,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(hx+3,hy-1.5,0.8,0.8,0,0,Math.PI*2);ctx.fill();}
+      if(fv>0.5){ctx.strokeStyle='rgba(210,160,130,'+(fv*0.7)+')';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(hx-0.5,hy+1);ctx.lineTo(hx-1.5,hy+5);ctx.stroke();ctx.beginPath();ctx.moveTo(hx+0.5,hy+1);ctx.lineTo(hx+1.5,hy+5);ctx.stroke();ctx.beginPath();ctx.moveTo(hx-1.5,hy+5);ctx.lineTo(hx+1.5,hy+5);ctx.stroke();}
+      if(fv>0.5){ctx.strokeStyle='rgba(190,100,85,'+(fv*0.8)+')';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(hx-3,hy+7);ctx.lineTo(hx+3,hy+7);ctx.stroke();}
+      if(sf>0.15){ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(sd>0?hx+r-2:hx-r-3,hy-r+4,3,4.5,0,0,Math.PI*2);ctx.fill();}
     }else{
-      // ==== 侧面 ====
-      ctx.fillStyle=hair; ctx.beginPath();ctx.ellipse(sd>0?hx-r:hx-3,hy,r+4,r*2+2,0,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle=skin;
-      if(sd>0){ctx.beginPath();ctx.ellipse(hx+1,hy,r*2-3,r*2,0,0,Math.PI*2);ctx.fill();}
-      else{ctx.beginPath();ctx.ellipse(hx-r,hy,r*2-3,r*2,0,0,Math.PI*2);ctx.fill();}
-      let ex=(sd>0)?hx+5:hx-4;
-      ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(ex,hy-3,2.5,2,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=hair;ctx.beginPath();ctx.ellipse(sd>0?hx-r:hx-3,hy,r+4,r*2+2,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=skin;
+      if(sd>0){ctx.beginPath();ctx.ellipse(hx+1,hy,r*2-3,r*2,0,0,Math.PI*2);ctx.fill();}else{ctx.beginPath();ctx.ellipse(hx-r,hy,r*2-3,r*2,0,0,Math.PI*2);ctx.fill();}
+      let ex=(sd>0)?hx+5:hx-4;ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(ex,hy-3,2.5,2,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#141414';ctx.beginPath();ctx.ellipse(ex+0.5,hy-1.5,1.3,1.3,0,0,Math.PI*2);ctx.fill();
       ctx.strokeStyle=skin;ctx.lineWidth=1.2;
       if(sd>0){ctx.beginPath();ctx.moveTo(hx+r,hy+1);ctx.lineTo(hx+r+2,hy+4);ctx.stroke();}
       else{ctx.beginPath();ctx.moveTo(hx-r,hy+1);ctx.lineTo(hx-r-2,hy+4);ctx.stroke();}
       ctx.fillStyle=skin;ctx.beginPath();ctx.ellipse(sd>0?hx+r-2:hx-r-4,hy-r+4,3,4.5,0,0,Math.PI*2);ctx.fill();
     }
-    // 后颈部
     if(ff<0.3){ctx.fillStyle=skinS;ctx.beginPath();ctx.ellipse(hx,hy+r-3,3,3,0,0,Math.PI*2);ctx.fill();}
   }
 
-  // ---- 手臂 ----
   drawArms(pl,sh,sL,sR,skin,jersey){
-    let ctx=this.ctx,pw=this.pw.bind(this),al=0.65,tk=4.5,sp=pl.swingTimer>0?1.0-pl.swingTimer/PlayerData.SWING_DURATION:0;
+    let pw=this.pw.bind(this),al=0.65,tk=4.5,sp=pl.swingTimer>0?1.0-pl.swingTimer/PlayerData.SWING_DURATION:0;
     let uL=pw(pl,-0.23,0,sh-0.22),uR=pw(pl,0.23,0,sh-0.22);
-    ctx.strokeStyle=jersey;ctx.lineWidth=4.5; ctx.beginPath();ctx.moveTo(sL[0],sL[1]);ctx.lineTo(uL[0],uL[1]);ctx.stroke(); ctx.beginPath();ctx.moveTo(sR[0],sR[1]);ctx.lineTo(uR[0],uR[1]);ctx.stroke();
+    ctx.strokeStyle=jersey;ctx.lineWidth=4.5;ctx.beginPath();ctx.moveTo(sL[0],sL[1]);ctx.lineTo(uL[0],uL[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(sR[0],sR[1]);ctx.lineTo(uR[0],uR[1]);ctx.stroke();
     ctx.strokeStyle=skin;ctx.lineWidth=tk;
-    if(pl.swingType===1){let ang=sp*200,rad=(ang-100)*Math.PI/180;let end=pw(pl,0.23+Math.cos(rad)*al,0,Math.max(0,sh-0.22+Math.sin(rad)*al));ctx.beginPath();ctx.moveTo(uR[0],uR[1]);ctx.lineTo(end[0],end[1]);ctx.stroke();let le=pw(pl,-0.23,0,Math.max(0,sh-0.22-al));ctx.beginPath();ctx.moveTo(uL[0],uL[1]);ctx.lineTo(le[0],le[1]);ctx.stroke();}
-    else if(pl.swingType===2){let ang=sp*220,rad=(80-ang)*Math.PI/180;let end=pw(pl,0.23+Math.cos(rad)*al,0,Math.max(0,sh-0.22+Math.sin(rad)*al));ctx.beginPath();ctx.moveTo(uR[0],uR[1]);ctx.lineTo(end[0],end[1]);ctx.stroke();let le=pw(pl,-0.23,0,Math.max(0,sh-0.22-al));ctx.beginPath();ctx.moveTo(uL[0],uL[1]);ctx.lineTo(le[0],le[1]);ctx.stroke();}
+    if(pl.swingType===1){let ang=sp*200,rad=(ang-100)*Math.PI/180,end=pw(pl,0.23+Math.cos(rad)*al,0,Math.max(0,sh-0.22+Math.sin(rad)*al));ctx.beginPath();ctx.moveTo(uR[0],uR[1]);ctx.lineTo(end[0],end[1]);ctx.stroke();let le=pw(pl,-0.23,0,Math.max(0,sh-0.22-al));ctx.beginPath();ctx.moveTo(uL[0],uL[1]);ctx.lineTo(le[0],le[1]);ctx.stroke();}
+    else if(pl.swingType===2){let ang=sp*220,rad=(80-ang)*Math.PI/180,end=pw(pl,0.23+Math.cos(rad)*al,0,Math.max(0,sh-0.22+Math.sin(rad)*al));ctx.beginPath();ctx.moveTo(uR[0],uR[1]);ctx.lineTo(end[0],end[1]);ctx.stroke();let le=pw(pl,-0.23,0,Math.max(0,sh-0.22-al));ctx.beginPath();ctx.moveTo(uL[0],uL[1]);ctx.lineTo(le[0],le[1]);ctx.stroke();}
     else{let le=pw(pl,-0.23,0,Math.max(0,sh-0.22-al)),re=pw(pl,0.23,0,Math.max(0,sh-0.22-al));ctx.beginPath();ctx.moveTo(uL[0],uL[1]);ctx.lineTo(le[0],le[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(uR[0],uR[1]);ctx.lineTo(re[0],re[1]);ctx.stroke();}
   }
 
-  // ---- 球 ----
   drawBall(core){
-    let ctx=this.ctx,p=GameRenderer.p,pos=p(core.ballX,core.ballY,core.ballZ),sx=pos[0],sy=pos[1],r=8.0,h=core.ballZ;
+    let p=GameRenderer.p,pos=p(core.ballX,core.ballY,core.ballZ),sx=pos[0],sy=pos[1],r=8.0,h=core.ballZ;
     let gp=p(core.ballX,core.ballY,0.02),shadowR=Math.max(3,r*(1.5-h*0.45)),shadowAlpha=Math.max(0.06,0.55/(1.0+h*0.35));
     ctx.fillStyle='rgba(0,0,0,'+shadowAlpha+')';ctx.beginPath();ctx.ellipse(gp[0],gp[1],shadowR,shadowR*0.5,0,0,Math.PI*2);ctx.fill();
     if(h<0.8){let nearAlpha=0.30*(0.8-h)/0.8,nearR=shadowR*(1.0+(0.8-h)/0.8*0.4);ctx.fillStyle='rgba(0,0,0,'+nearAlpha+')';ctx.beginPath();ctx.ellipse(gp[0],gp[1],nearR,nearR*0.5,0,0,Math.PI*2);ctx.fill();}
     if(h>0.5){ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='9px Arial';ctx.fillText(h.toFixed(1)+'m',sx+r+2,sy-2);}
     ctx.fillStyle='#f8f8f8';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();
-    // 5块面板
     ctx.save();ctx.beginPath();ctx.moveTo(sx-r*0.7,sy-r*0.9);ctx.quadraticCurveTo(sx,sy-r*1.2,sx+r*0.7,sy-r*0.9);ctx.quadraticCurveTo(sx+r*0.4,sy-r*0.3,sx,sy-r*0.1);ctx.quadraticCurveTo(sx-r*0.4,sy-r*0.3,sx-r*0.7,sy-r*0.9);ctx.closePath();ctx.clip();ctx.fillStyle='#ffc828';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();ctx.restore();
     ctx.save();ctx.beginPath();ctx.moveTo(sx+r*0.4,sy-r*0.3);ctx.quadraticCurveTo(sx+r*0.7,sy-r*0.9,sx+r*0.9,sy-r*0.2);ctx.quadraticCurveTo(sx+r*1.1,sy+r*0.3,sx+r*0.6,sy+r*0.4);ctx.quadraticCurveTo(sx+r*0.2,sy+r*0.1,sx,sy-r*0.1);ctx.closePath();ctx.clip();ctx.fillStyle='#1941af';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();ctx.restore();
     ctx.save();ctx.beginPath();ctx.moveTo(sx,sy-r*0.1);ctx.quadraticCurveTo(sx+r*0.2,sy+r*0.1,sx+r*0.6,sy+r*0.4);ctx.quadraticCurveTo(sx+r*0.8,sy+r*0.8,sx+r*0.2,sy+r*0.9);ctx.quadraticCurveTo(sx-r*0.3,sy+r*0.7,sx-r*0.3,sy+r*0.2);ctx.quadraticCurveTo(sx-r*0.2,sy,sx,sy-r*0.1);ctx.closePath();ctx.clip();ctx.fillStyle='#ffc828';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();ctx.restore();
     ctx.save();ctx.beginPath();ctx.moveTo(sx-r*0.3,sy+r*0.2);ctx.quadraticCurveTo(sx-r*0.3,sy+r*0.7,sx+r*0.2,sy+r*0.9);ctx.quadraticCurveTo(sx-r*0.3,sy+r*1.1,sx-r*0.7,sy+r*0.6);ctx.quadraticCurveTo(sx-r*0.9,sy,sx-r*0.7,sy-r*0.4);ctx.quadraticCurveTo(sx-r*0.5,sy-r*0.1,sx-r*0.3,sy+r*0.2);ctx.closePath();ctx.clip();ctx.fillStyle='#1941af';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();ctx.restore();
     ctx.save();ctx.beginPath();ctx.moveTo(sx-r*0.7,sy-r*0.9);ctx.quadraticCurveTo(sx-r*0.4,sy-r*0.3,sx-r*0.5,sy);ctx.quadraticCurveTo(sx-r*0.9,sy,sx-r*0.9,sy-r*0.4);ctx.closePath();ctx.clip();ctx.fillStyle='#1941af';ctx.beginPath();ctx.ellipse(sx,sy,r,r,0,0,Math.PI*2);ctx.fill();ctx.restore();
-    // 接缝线
     ctx.strokeStyle='#32323c';ctx.lineWidth=1.8;
     ctx.beginPath();ctx.moveTo(sx,sy-r*0.95);ctx.quadraticCurveTo(sx-r*0.5,sy-r*0.5,sx-r*0.6,sy);ctx.quadraticCurveTo(sx-r*0.4,sy+r*0.5,sx-r*0.1,sy+r*0.85);ctx.stroke();
     ctx.beginPath();ctx.moveTo(sx,sy-r*0.95);ctx.quadraticCurveTo(sx+r*0.3,sy-r*0.5,sx+r*0.55,sy-r*0.1);ctx.quadraticCurveTo(sx+r*0.5,sy+r*0.4,sx+r*0.25,sy+r*0.75);ctx.stroke();
@@ -319,21 +261,18 @@ class GameRenderer {
     ctx.fillStyle='rgba(255,255,255,0.3)';ctx.beginPath();ctx.ellipse(sx-r*0.05,sy-r*0.35,r*0.4,r*0.3,0,0,Math.PI*2);ctx.fill();
   }
 
-  // ---- 观众席 ----
   initSpectators(){if(this.spectatorData)return;let r=this.seededRandom(42);this.spectatorData=[];let idx=0;for(let row=0;row<5&&idx<200;row++)for(let col=0;col<10&&idx<200;col++)this.spectatorData.push([0.5+col*0.9+r()*0.3,18.2+row*0.35,row*0.12,Math.floor(r()*7),++idx]);for(let row=0;row<4&&idx<200;row++)for(let col=0;col<10&&idx<200;col++)this.spectatorData.push([0.5+col*0.9+r()*0.3,-0.2-row*0.35,row*0.12,Math.floor(r()*7),++idx]);for(let row=0;row<5&&idx<200;row++)for(let col=0;col<19&&idx<200;col++)this.spectatorData.push([-0.2-row*0.35,0.5+col*0.95+r()*0.3,row*0.12,Math.floor(r()*7),++idx]);for(let row=0;row<5&&idx<200;row++)for(let col=0;col<19&&idx<200;col++)this.spectatorData.push([9.1+row*0.35,0.5+col*0.95+r()*0.3,row*0.12,Math.floor(r()*7),++idx]);}
   seededRandom(seed){return function(){seed=(seed*16807+0)%2147483647;return(seed-1)/2147483646;};}
 
   drawSpectators(core){
-    let ctx=this.ctx,p=GameRenderer.p;ctx.globalAlpha=1.0;
-    let steps=4,stepH=0.15;
+    ctx.globalAlpha=1.0;let p=GameRenderer.p,steps=4,stepH=0.15;
     for(let side=0;side<4;side++)for(let s=0;s<steps;s++){let zBase=s*stepH;if(side===0){let y0=18.0+s*0.35,y1=y0+0.35;this.fillRect(0,y0,9,y1,(s%2===0)?'#737378':'#646469');ctx.fillStyle='#505055';this.fillPoly([p(0,y1,zBase),p(9,y1,zBase),p(9,y1,zBase+stepH),p(0,y1,zBase+stepH)]);}else if(side===1){let y0=-0.35-s*0.35,y1=y0+0.35;this.fillRect(0,y0,9,y1,(s%2===0)?'#737378':'#646469');ctx.fillStyle='#505055';this.fillPoly([p(0,y0,zBase),p(9,y0,zBase),p(9,y0,zBase+stepH),p(0,y0,zBase+stepH)]);}else if(side===2){let x0=-0.35-s*0.35,x1=x0+0.35;this.fillRect(x0,0,x1,18,(s%2===0)?'#737378':'#646469');ctx.fillStyle='#505055';this.fillPoly([p(x0,0,zBase),p(x0,18,zBase),p(x0,18,zBase+stepH),p(x0,0,zBase+stepH)]);}else{let x0=9.0+s*0.35,x1=x0+0.35;this.fillRect(x0,0,x1,18,(s%2===0)?'#737378':'#646469');ctx.fillStyle='#505055';this.fillPoly([p(x1,0,zBase),p(x1,18,zBase),p(x1,18,zBase+stepH),p(x1,0,zBase+stepH)]);}}
     let time=Date.now(),colors=GameRenderer.SPECTATOR_COLORS;
     for(let sp of this.spectatorData){if(sp[0]===0&&sp[1]===0)continue;let cl=colors[sp[3]],cb=p(sp[0],sp[1],sp[2]),cx=cb[0],cy=cb[1];ctx.fillStyle='#285028';ctx.beginPath();ctx.roundRect(cx-7,cy-9,14,11,4);ctx.fill();ctx.strokeStyle='#1e3c1e';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(cx-5,cy-9);ctx.lineTo(cx-5,cy-16);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+5,cy-9);ctx.lineTo(cx+5,cy-16);ctx.stroke();ctx.beginPath();ctx.moveTo(cx-5,cy-16);ctx.lineTo(cx+5,cy-16);ctx.stroke();let bob=Math.sin(time*0.003+sp[0]*4+sp[1]*3)*2,sp2=p(sp[0],sp[1],sp[2]+0.18+bob*0.04),bx=sp2[0],by=sp2[1];ctx.fillStyle=cl;ctx.beginPath();ctx.ellipse(bx,by-1.5,5,7.5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fad2aa';ctx.beginPath();ctx.ellipse(bx,by-7,4,3.5,0,0,Math.PI*2);ctx.fill();}
   }
 
-  // ---- 裁判 ----
   drawReferee(core){
-    let ctx=this.ctx,p=GameRenderer.p,rx=-0.6,ry=9.0,rz=1.2,greenC='#237837',greenD='#195a28',blackC='#19191e';
+    let p=GameRenderer.p,rx=-0.6,ry=9.0,rz=1.2,greenC='#237837',greenD='#195a28',blackC='#19191e';
     ctx.strokeStyle='#96969b';ctx.lineWidth=3;let legTops=[[rx-0.12,ry-0.06],[rx+0.12,ry-0.06],[rx-0.12,ry+0.06],[rx+0.12,ry+0.06]];for(let lt of legTops){let lb=p(lt[0],lt[1],0),ls=p(lt[0],lt[1],rz);ctx.beginPath();ctx.moveTo(lb[0],lb[1]);ctx.lineTo(ls[0],ls[1]);ctx.stroke();}
     let seatP=[p(rx-0.15,ry-0.06,rz),p(rx+0.15,ry-0.06,rz),p(rx+0.15,ry+0.06,rz),p(rx-0.15,ry+0.06,rz)];ctx.fillStyle=greenC;this.fillPoly(seatP);ctx.strokeStyle=greenD;ctx.lineWidth=1.5;this.strokePoly(seatP,true);
     let backH=0.3,backP=[p(rx-0.14,ry-0.06,rz),p(rx+0.14,ry-0.06,rz),p(rx+0.12,ry-0.08,rz+backH),p(rx-0.12,ry-0.08,rz+backH)];ctx.fillStyle=greenD;this.fillPoly(backP);ctx.strokeStyle='#195023';ctx.lineWidth=1.5;this.strokePoly(backP,true);
@@ -354,14 +293,12 @@ class GameRenderer {
     let legTopZ=bh-0.1,ll1=p(rx-0.06,ry+0.06,legTopZ),ll2=p(rx-0.07,ry+0.08,legTopZ-0.5),rl1=p(rx+0.06,ry+0.06,legTopZ),rl2=p(rx+0.07,ry+0.08,legTopZ-0.5);ctx.strokeStyle=blackC;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(ll1[0],ll1[1]);ctx.lineTo(ll2[0],ll2[1]);ctx.stroke();ctx.beginPath();ctx.moveTo(rl1[0],rl1[1]);ctx.lineTo(rl2[0],rl2[1]);ctx.stroke();ctx.fillStyle='#19191e';let sfp=p(rx-0.07,ry+0.08,legTopZ-0.52);ctx.beginPath();ctx.ellipse(sfp[0],sfp[1],4,2,0,0,Math.PI*2);ctx.fill();sfp=p(rx+0.07,ry+0.08,legTopZ-0.52);ctx.beginPath();ctx.ellipse(sfp[0],sfp[1],4,2,0,0,Math.PI*2);ctx.fill();let shadow=p(rx,ry,0.02);ctx.fillStyle='rgba(0,0,0,0.15)';ctx.beginPath();ctx.ellipse(shadow[0],shadow[1],8,3,0,0,Math.PI*2);ctx.fill();
   }
 
-  // ---- 加油气泡 ----
   drawCheerBubble(core){
-    if(core.cheerTimer<=0||!core.currentCheer)return;let ctx=this.ctx,p=GameRenderer.p,bubbleWorld=p(core.cheerX,core.cheerY,1.5),bx=bubbleWorld[0],by=bubbleWorld[1];let floatY=Math.sin(core.cheerTimer*5)*8;by+=floatY;let alpha=Math.min(1.0,core.cheerTimer/0.3);if(core.cheerTimer<0.5)alpha=core.cheerTimer/0.5;let text=core.currentCheer,textW=text.length*10,bubbleW=textW+16,bubbleH=24;ctx.globalAlpha=alpha;ctx.fillStyle='rgba(255,255,255,0.92)';ctx.beginPath();ctx.roundRect(bx-bubbleW/2,by-bubbleH/2,bubbleW,bubbleH,12);ctx.fill();ctx.strokeStyle='rgba(180,180,190,'+(alpha*0.7)+')';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(bx-bubbleW/2,by-bubbleH/2,bubbleW,bubbleH,12);ctx.stroke();ctx.fillStyle='rgba(255,255,255,0.92)';ctx.beginPath();ctx.moveTo(bx-4,by+bubbleH/2);ctx.lineTo(bx+4,by+bubbleH/2);ctx.lineTo(bx,by+bubbleH/2+8);ctx.closePath();ctx.fill();ctx.fillStyle='#28282d';ctx.font='11px "Microsoft YaHei","Arial"';let tw=11*text.length*0.7;ctx.fillText(text,bx-tw/2,by+4);ctx.globalAlpha=1.0;
+    if(core.cheerTimer<=0||!core.currentCheer)return;let p=GameRenderer.p,bubbleWorld=p(core.cheerX,core.cheerY,1.5),bx=bubbleWorld[0],by=bubbleWorld[1];let floatY=Math.sin(core.cheerTimer*5)*8;by+=floatY;let alpha=Math.min(1.0,core.cheerTimer/0.3);if(core.cheerTimer<0.5)alpha=core.cheerTimer/0.5;let text=core.currentCheer,textW=text.length*10,bubbleW=textW+16,bubbleH=24;ctx.globalAlpha=alpha;ctx.fillStyle='rgba(255,255,255,0.92)';ctx.beginPath();ctx.roundRect(bx-bubbleW/2,by-bubbleH/2,bubbleW,bubbleH,12);ctx.fill();ctx.strokeStyle='rgba(180,180,190,'+(alpha*0.7)+')';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(bx-bubbleW/2,by-bubbleH/2,bubbleW,bubbleH,12);ctx.stroke();ctx.fillStyle='rgba(255,255,255,0.92)';ctx.beginPath();ctx.moveTo(bx-4,by+bubbleH/2);ctx.lineTo(bx+4,by+bubbleH/2);ctx.lineTo(bx,by+bubbleH/2+8);ctx.closePath();ctx.fill();ctx.fillStyle='#28282d';ctx.font='11px "Microsoft YaHei","Arial"';let tw=11*text.length*0.7;ctx.fillText(text,bx-tw/2,by+4);ctx.globalAlpha=1.0;
   }
 
-  // ---- 主渲染 ----
   render(core){
-    let ctx=this.ctx;ctx.globalAlpha=1.0;ctx.fillStyle='#142346';ctx.fillRect(0,0,1280,720);
+    ctx.globalAlpha=1.0;ctx.fillStyle='#142346';ctx.fillRect(0,0,W,H);
     this.drawCourt();this.drawSpectators(core);this.drawReferee(core);this.drawCheerBubble(core);
     let enSorted=[...core.enemyTeam].sort((a,b)=>b.y-a.y);ctx.globalAlpha=0.72;for(let pl of enSorted)this.drawPlayer(pl);ctx.globalAlpha=1.0;
     this.drawNetBack(core);
@@ -378,7 +315,7 @@ class GameRenderer {
 // ============================================================
 class GameCore {
   constructor(canvas){
-    this.canvas=canvas;this.rend=new GameRenderer(canvas);this.state='WAITING';this.difficulty='NORMAL';
+    this.rend=new GameRenderer();this.state='WAITING';this.difficulty='NORMAL';
     this.myTeam=[];this.enemyTeam=[];this.allPlayers=[];this.controlledPlayer=null;
     this.ballX=4.5;this.ballY=1.0;this.ballZ=2.0;this.ballVx=0;this.ballVy=0;this.ballVz=0;this.ballInPlay=false;this.ballLanded=false;this.lastTouchedByTeam=-1;
     this.myScore=0;this.enemyScore=0;this.servingTeam=0;this.scoreTimer=0;this.servePending=true;this.netHitX=4.5;this.netHitTimer=0;
@@ -455,7 +392,7 @@ class GameCore {
 // 主程序入口
 // ============================================================
 (function(){
-  let canvas=document.getElementById('gameCanvas'),loginScreen=document.getElementById('login-screen'),modeScreen=document.getElementById('mode-screen'),nameInput=document.getElementById('name-input'),errorText=document.getElementById('error-text'),bgm=document.getElementById('bgm-audio');
+  let loginScreen=document.getElementById('login-screen'),modeScreen=document.getElementById('mode-screen'),nameInput=document.getElementById('name-input'),errorText=document.getElementById('error-text'),bgm=document.getElementById('bgm-audio');
   let core=new GameCore(canvas),gameStarted=false;
 
   document.getElementById('login-btn').addEventListener('click',()=>{
@@ -473,7 +410,13 @@ class GameCore {
     if(!gameStarted){gameStarted=true;core.start();
       document.addEventListener('keydown',(e)=>{if(e.code==='Escape'){modeScreen.style.display='flex';core.stopBGM();return;}core.handleKeyDown(e.code);e.preventDefault();});
       document.addEventListener('keyup',(e)=>{core.handleKeyUp(e.code);if(e.code==='Space'||(e.code>='Digit0'&&e.code<='Digit9')||e.code==='KeyW'||e.code==='KeyA'||e.code==='KeyS'||e.code==='KeyD')e.preventDefault();});
-      canvas.addEventListener('mousemove',(e)=>{let rect=canvas.getBoundingClientRect(),sx=(e.clientX-rect.left)*(1280/rect.width),sy=(e.clientY-rect.top)*(720/rect.height);core.mouseMoved(sx,sy);});
+      // 鼠标坐标需要除以 dpr，因为 Canvas 内部分辨率是 CSS 尺寸的 dpr 倍
+      canvas.addEventListener('mousemove',(e)=>{
+        let rect=canvas.getBoundingClientRect();
+        let sx=(e.clientX-rect.left)*W/rect.width;
+        let sy=(e.clientY-rect.top)*H/rect.height;
+        core.mouseMoved(sx,sy);
+      });
       canvas.addEventListener('click',(e)=>{if(e.button===0)core.passClicked=true;});
       canvas.addEventListener('contextmenu',(e)=>{e.preventDefault();core.spikeClicked=true;});
     }
