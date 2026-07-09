@@ -586,9 +586,9 @@ class GameCore {
   /* getBlunderChance - ★ 修复：恢复为 Java 原始犯错率（原网页版减半了所有值） */
   getBlunderChance(team){
     if(team===0){
-      return(this.difficulty==='EASY')?0.12:(this.difficulty==='NORMAL')?0.18:0.28;
+      return(this.difficulty==='EASY')?0.10:(this.difficulty==='NORMAL')?0.17:0.24;
     }else{
-      return(this.difficulty==='EASY')?0.28:(this.difficulty==='NORMAL')?0.18:0.12;
+      return(this.difficulty==='EASY')?0.24:(this.difficulty==='NORMAL')?0.17:0.10;
     }
   }
 
