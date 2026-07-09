@@ -439,9 +439,9 @@ public class GameCore {
     /** 根据难度返回该队AI的犯错概率 */
     private double getBlunderChance(int team) {
         if (team == 0) { // 我方AI
-            return (difficulty == Difficulty.EASY) ? 0.08 : (difficulty == Difficulty.NORMAL) ? 0.20 : 0.30;
+            return (difficulty == Difficulty.EASY) ? 0.10 : (difficulty == Difficulty.NORMAL) ? 0.18 : 0.24;
         } else { // 敌方AI
-            return (difficulty == Difficulty.EASY) ? 0.45 : (difficulty == Difficulty.NORMAL) ? 0.20 : 0.06;
+            return (difficulty == Difficulty.EASY) ? 0.24 : (difficulty == Difficulty.NORMAL) ? 0.18 : 0.10;
         }
     }
 

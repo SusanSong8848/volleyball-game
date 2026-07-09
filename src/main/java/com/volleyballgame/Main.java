@@ -27,6 +27,7 @@ import java.io.File;
  *   loginScene(输入名字) → modeScene(选难度+开始BGM) → gameScene(排球游戏)
  * 
  * 正式游戏界面的UI文本(在窗口最上方分行居中显示，不遮挡场地)：
+ *   模式: 简单/普通/困难 (金色)
  *   选手: xxx  (金色)
  *   控制: 前排 (青色)
  *   我方 0-0 敌方 (白色)
@@ -164,13 +165,13 @@ public class Main extends Application {
         GraphicsContext g = canvas.getGraphicsContext2D();
 
         // ===== UI文本(窗口最上方分行居中) =====
-        modeText = new Text("选手: " + playerName);
+        modeText = new Text("模式: " + difficultyName(difficulty));
         modeText.setFont(Font.font("Arial", FontWeight.BOLD, 13));
         modeText.setStyle("-fx-fill: #FFD700;"); // 金色
         modeText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
         modeText.setX(0); modeText.setWrappingWidth(W); modeText.setY(PC(0));
 
-        playerText = new Text("");
+        playerText = new Text("选手: " + playerName);
         playerText.setFont(Font.font("Arial", FontWeight.BOLD, 13));
         playerText.setStyle("-fx-fill: cyan;"); // 青色
         playerText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
